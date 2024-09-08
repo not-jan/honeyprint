@@ -16,6 +16,7 @@ use std::{
     },
     sync::Arc,
 };
+use log::info;
 use tokio::net::{
         TcpListener,
         UdpSocket,
@@ -76,6 +77,7 @@ async fn main() -> Result<()> {
     let status_addr = SocketAddrV4::new(args.address, args.status_port);
     let addr = SocketAddrV4::new(args.address, args.port);
 
+    info!("Starting honeyprint on {}:{}", args.address, args.port);
     let status_socket = UdpSocket::bind(&status_addr).await?;
     let mut status_framed = UdpFramed::new(status_socket, BytesCodec::new());
 
@@ -90,7 +92,7 @@ async fn main() -> Result<()> {
 
     let status = tokio::spawn(async move {
         while let Some(Ok((data, addr))) = status_framed.next().await {
-            println!("Got data: {:?} from {:?}", data, addr);
+            info!("Got data: {:?} from {:?}", data, addr);
             match status_framed.send((Bytes::from(&b"OK"[..]), addr)).await {
                 Ok(_) => {
                     println!("Sent OK");
@@ -110,7 +112,7 @@ async fn main() -> Result<()> {
 
                 tokio::spawn(async move {
                     if let Err(e) = printer.process(stream).await {
-                        println!("failed to process connection; error = {}", e);
+                        info!("failed to process connection; error = {}", e);
                     }
                 });
             }
