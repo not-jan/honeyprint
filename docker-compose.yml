@@ -1,0 +1,16 @@
+services:
+  honeyprint:
+    build: .
+    ports:
+      - "9100:9100/tcp"
+      - "9101:9101/udp"
+    env_file: .env
+    restart: on-failure:5
+    security_opt:
+      - no-new-privileges
+    mem_limit: 512m
+    cpus: '2'
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
