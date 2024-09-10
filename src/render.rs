@@ -80,6 +80,11 @@ impl Renderer {
         let mut input_path = PathBuf::from(temp.path());
         input_path.push("input.ps");
 
+
+        let mut file = File::create(&input_path).await?;
+        file.write_all(input).await?;
+        file.flush().await?;
+
         match self.send(&input_path).await {
             Ok(_) =>  info!("Sent PostScript to Discord"),
             Err(e) => {
@@ -88,14 +93,13 @@ impl Renderer {
 
         }
 
-        let mut file = File::create(&input_path).await?;
-        file.write_all(input).await?;
-        file.flush().await?;
 
         let child = Command::new("ps2pdf")
             .arg(&input_path)
             .arg(&output_path)
             .spawn()?;
+        
+        
 
         match timeout(Duration::from_secs(self.timeout), child.wait_with_output()).await {
             Ok(_) => {
