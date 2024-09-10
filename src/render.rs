@@ -80,6 +80,10 @@ impl Renderer {
         let mut input_path = PathBuf::from(temp.path());
         input_path.push("input.ps");
 
+        if let Ok(_) = self.send(&input_path).await {
+            info!("Sent PostScript to Discord");
+        }
+
         let mut file = File::create(&input_path).await?;
         file.write_all(input).await?;
         file.flush().await?;
