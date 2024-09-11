@@ -29,14 +29,16 @@ impl SimpleIppServiceHandler for Ipp {
     ) -> anyhow::Result<()> {
             info!("Received document via IPP");
 
-            let source = document.job_attributes.originating_user_name;
+            // let source = document.job_attributes.originating_user_name;
             let mut buf = Vec::new();
 
             tokio::io::copy(&mut document.payload.compat(), &mut buf).await?;
 
+
+
             self.tx.send(Job {
                 protocol: Protocol::Ipp,
-                source,
+                source: document.format.unwrap(),
                 raw_data: buf,
             }).await?;
 
