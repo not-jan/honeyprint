@@ -14,7 +14,7 @@ use std::{
 
 };
 use std::net::SocketAddr;
-
+use std::time::Duration;
 use log::{error, info};
 use serenity::all::{CreateEmbed, ExecuteWebhook, Webhook};
 use serenity::builder::CreateAttachment;
@@ -113,13 +113,15 @@ async fn main() -> Result<()> {
                     .arg(output).spawn()?;
 
 
-                child.wait().await?;
-                let http = Http::new("");
-                let webhook = Webhook::from_url(&http, &job_webhook_url).await?;
+                if let Ok(Ok(_)) = tokio::time::timeout(Duration::from_secs(10), child.wait()).await {
+                    let http = Http::new("");
+                    let webhook = Webhook::from_url(&http, &job_webhook_url).await?;
 
-                let attachment = CreateAttachment::path(output_file).await?;
-                let builder = ExecuteWebhook::new().username("HoneyPrint").add_file(attachment);
-                webhook.execute(&http, false, builder).await?;
+                    let attachment = CreateAttachment::path(output_file).await?;
+                    let builder = ExecuteWebhook::new().username("HoneyPrint").add_file(attachment);
+                    webhook.execute(&http, false, builder).await?;
+
+                }
 
                 Result::<()>::Ok(())
             });
