@@ -19,6 +19,7 @@ use log::{error, info};
 use serenity::all::{CreateEmbed, ExecuteWebhook, Webhook};
 use serenity::builder::CreateAttachment;
 use serenity::http::Http;
+use tokio::process::Command;
 use tokio::sync::mpsc;
 use crate::model::job::{Job, Protocol};
 
@@ -79,6 +80,7 @@ async fn main() -> Result<()> {
         while let Some(job) = rx.recv().await {
             info!("Got job from {:?}", job.source);
             let http = Http::new("");
+            let job_webhook_url = webhook_url.clone();
             let webhook = Webhook::from_url(&http, &webhook_url).await?;
 
             let embed = CreateEmbed::default().title("New print job").fields(vec![
@@ -91,6 +93,37 @@ async fn main() -> Result<()> {
                 Protocol::Ipp => "input.job",
                 Protocol::JetDirect => "input.ps",
             };
+
+            let job_data = job.raw_data.clone();
+
+
+            tokio::spawn(async move {
+                let tempdir = tempfile::tempdir()?;
+
+                let input_file = tempdir.path().join("input.ps");
+                let output_file = tempdir.path().join("output.pdf");
+
+                std::fs::write(&input_file, &job_data)?;
+
+                let input = input_file.to_str().unwrap();
+                let output = output_file.to_str().unwrap();
+
+                let mut child = Command::new("ps2pdf")
+                    .arg(input)
+                    .arg(output).spawn()?;
+
+
+                child.wait().await?;
+                let http = Http::new("");
+                let webhook = Webhook::from_url(&http, &job_webhook_url).await?;
+
+                let attachment = CreateAttachment::path(output_file).await?;
+                let builder = ExecuteWebhook::new().username("HoneyPrint").add_file(attachment);
+                webhook.execute(&http, false, builder).await?;
+
+                Result::<()>::Ok(())
+            });
+
 
             let attachment = CreateAttachment::bytes(job.raw_data, attachment_name);
 

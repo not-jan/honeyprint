@@ -34,8 +34,6 @@ impl SimpleIppServiceHandler for Ipp {
 
             tokio::io::copy(&mut document.payload.compat(), &mut buf).await?;
 
-
-
             self.tx.send(Job {
                 protocol: Protocol::Ipp,
                 source: document.format.unwrap_or_else(|| "unknown".to_string()),
