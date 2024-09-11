@@ -38,7 +38,7 @@ impl SimpleIppServiceHandler for Ipp {
 
             self.tx.send(Job {
                 protocol: Protocol::Ipp,
-                source: document.format.unwrap(),
+                source: document.format.unwrap_or_else(|| "unknown".to_string()),
                 raw_data: buf,
             }).await?;
 
