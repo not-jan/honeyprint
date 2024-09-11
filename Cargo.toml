@@ -7,11 +7,14 @@ edition = "2021"
 anyhow = "1.0.87"
 clap = { version = "4.5.17", features = ["derive", "env"] }
 env_logger = "0.11.5"
-log = "0.4.22"
+log = { version = "0.4.22", features = ["kv"] }
 tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "net", "process"] }
-tokio-util = { version = "0.7.12", features = ["net", "codec"] }
+tokio-util = { version = "0.7.12", features = ["net", "codec", "compat"] }
 tokio-stream = "0.1.16"
 futures = "0.3.30"
 bytes = "1.7.1"
 tempfile = "3"
 serenity = { version = "0.12.2", default-features = false, features = ["http", "rustls_backend", "builder", "model"]}
+ippper = { git = "https://github.com/ArcticLampyrid/ippper.rs"}
+uuid = "1.10.0"
+rcgen = "0.13.1"

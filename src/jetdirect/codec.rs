@@ -10,30 +10,19 @@ pub struct Codec {
     finished: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct PrintJob(Vec<u8>);
 
-impl AsRef<[u8]> for PrintJob {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
 
-impl PrintJob {
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-}
 
 impl Decoder for Codec {
     type Error = anyhow::Error;
-    type Item = PrintJob;
+    type Item = Vec<u8>;
 
     fn decode(&mut self, src: &mut BytesMut) -> anyhow::Result<Option<Self::Item>, Self::Error> {
         if self.finished {
             bail!("Already finished");
         }
-
+        
+        // Read until EOF
         for (i, b) in src.iter().enumerate() {
             if *b == 4 {
                 self.finished = true;
@@ -41,7 +30,7 @@ impl Decoder for Codec {
                 let data = src[..i + 1].to_vec();
                 src.advance(i);
 
-                return Ok(Some(PrintJob(data)));
+                return Ok(Some(data));
             }
         }
 

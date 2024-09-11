@@ -3,7 +3,7 @@ services:
     build: .
     ports:
       - "9100:9100/tcp"
-      - "9101:9101/udp"
+      - "631:631/tcp"
     env_file: .env
     restart: on-failure:5
     security_opt:

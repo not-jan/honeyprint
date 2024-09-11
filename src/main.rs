@@ -1,35 +1,31 @@
-use crate::{
-    print::Printer,
-    render::Renderer,
-};
+
 use anyhow::{
     anyhow,
     Result,
 };
-use bytes::Bytes;
+
 use clap::Parser;
-use futures::SinkExt;
+
 use std::{
     net::{
         Ipv4Addr,
         SocketAddrV4,
     },
-    sync::Arc,
-};
-use log::info;
-use tokio::net::{
-        TcpListener,
-        UdpSocket,
-    };
-use tokio_stream::StreamExt;
-use tokio_util::{
-    codec::BytesCodec,
-    udp::UdpFramed,
-};
 
-mod codec;
-mod print;
-mod render;
+};
+use std::net::SocketAddr;
+
+use log::{error, info};
+use serenity::all::{CreateEmbed, ExecuteWebhook, Webhook};
+use serenity::builder::CreateAttachment;
+use serenity::http::Http;
+use tokio::sync::mpsc;
+use crate::model::job::{Job, Protocol};
+
+
+mod ipp;
+mod jetdirect;
+mod model;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -41,9 +37,6 @@ struct Cli {
     /// What port to bind to
     #[clap(short, long, default_value = "9100", env = "HONEYPRINT_PORT")]
     port: u16,
-    /// What port to bind to for status
-    #[clap(short, long, default_value = "9101", env = "HONEYPRINT_STATUS_PORT")]
-    status_port: u16,
     /// Maximum file size to accept on the print server in bytes
     #[clap(
         short,
@@ -54,7 +47,7 @@ struct Cli {
     max_file_size: usize,
     /// Maximum file size to send to Discord in bytes
     #[clap(
-        short,
+        short = 'd',
         long,
         default_value = "524288",
         env = "HONEYPRINT_MAX_FILE_SIZE_DISCORD"
@@ -69,56 +62,57 @@ struct Cli {
 }
 
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
     let args = Cli::parse();
-    let status_addr = SocketAddrV4::new(args.address, args.status_port);
-    let addr = SocketAddrV4::new(args.address, args.port);
 
+    let (tx, mut rx) = mpsc::channel::<Job>(10);
+
+    let jet_direct_addr = SocketAddrV4::new(args.address, args.port);
+    let ipp_addr = SocketAddrV4::new(args.address, 631);
+    let webhook_url = args.webhook_url.clone();
     info!("Starting honeyprint on {}:{}", args.address, args.port);
-    let status_socket = UdpSocket::bind(&status_addr).await?;
-    let mut status_framed = UdpFramed::new(status_socket, BytesCodec::new());
 
-    let print_socket = TcpListener::bind(&addr).await?;
 
-    let renderer = Arc::new(Renderer::new(
-        args.max_file_size,
-        args.max_file_size_discord,
-        args.webhook_url,
-        args.timeout,
-    ));
+    let _job_handler = tokio::spawn(async move {
+        while let Some(job) = rx.recv().await {
+            info!("Got job from {:?}", job.source);
+            let http = Http::new("");
+            let webhook = Webhook::from_url(&http, &webhook_url).await?;
 
-    let status = tokio::spawn(async move {
-        while let Some(Ok((data, addr))) = status_framed.next().await {
-            info!("Got data: {:?} from {:?}", data, addr);
-            match status_framed.send((Bytes::from(&b"OK"[..]), addr)).await {
+            let embed = CreateEmbed::default().title("New print job").fields(vec![
+                ("Source", job.source, false),
+                ("Protocol", job.protocol.to_string(), false),
+                ("Size", job.raw_data.len().to_string(), false),
+            ]);
+
+            let attachment_name = match job.protocol {
+                Protocol::Ipp => "input.job",
+                Protocol::JetDirect => "input.ps",
+            };
+
+            let attachment = CreateAttachment::bytes(job.raw_data, attachment_name);
+
+            let builder = ExecuteWebhook::new().username("HoneyPrint").embed(embed).add_file(attachment);
+
+            match webhook.execute(&http, false, builder).await {
                 Ok(_) => {
-                    println!("Sent OK");
+                    info!("Sent job to Discord");
                 }
                 Err(e) => {
-                    println!("Failed to send OK; error = {}", e);
+                    error!("Failed to send job to Discord; error = {}", e);
                 }
             }
         }
+
+        Result::<()>::Ok(())
     });
 
-    let prints = tokio::spawn(async move {
-        let r = renderer.clone();
-        loop {
-            if let Ok((stream, _)) = print_socket.accept().await {
-                let printer = Printer::new(r.clone());
 
-                tokio::spawn(async move {
-                    if let Err(e) = printer.process(stream).await {
-                        info!("failed to process connection; error = {}", e);
-                    }
-                });
-            }
-        }
-    });
+    let ipp = ipp::server::run(SocketAddr::V4(ipp_addr), tx.clone());
+    let jetdirect = jetdirect::server::run(SocketAddr::V4(jet_direct_addr), tx.clone());
 
-    tokio::try_join!(status, prints).map_err(|e| anyhow!(e))?;
+    tokio::try_join!(ipp, jetdirect).map_err(|e| anyhow!(e))?;
     Ok(())
 }
